@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cross-Maison Reconciliation System</title>
+  <meta
+    name="description"
+    content="LVMH Governed Information Layer + Strategic Sourcing Prototype for cross-Maison procure-to-pay reconciliation."
+  />
+  <link rel="icon" type="image/webp" href="Icon.webp" />
+  <link rel="apple-touch-icon" href="Icon.webp" />
+  <link rel="stylesheet" href="styles/app.css" />
+</head>
+<body>
+  <!--
+    App shell for the Cross-Maison P2P Reconciliation prototype (Req 1.1, 17.1).
+    The five-view, single-reviewer UI is rendered into <main id="app"> by the
+    appController ES module, which auto-boots on DOMContentLoaded and wires the
+    hash router (#load | #exceptions | #mappings | #audit | #report).
+  -->
+  <header class="app-header" role="banner">
+    <div class="app-header__inner">
+      <div class="app-header__brand">
+        <img class="app-header__avatar" src="Icon.webp" alt="" aria-hidden="true" />
+        <div class="app-header__titles">
+          <h1 class="app-header__title">Cross-Maison Reconciliation System</h1>
+          <p class="app-header__subtitle">LVMH Governed Information Layer + Strategic Sourcing Prototype</p>
+        </div>
+      </div>
+      <button type="button" id="reset-app" class="app-header__reset" title="Clear all data and start over">Reset</button>
+    </div>
+    <!--
+      Primary navigation across the five views (Req 17.2). Links use hash
+      anchors so the controller's hash router resolves each to its view; the
+      default route is #load (Load Extracts).
+    -->
+    <nav class="app-nav" aria-label="Primary views">
+      <ul class="app-nav__list">
+        <li class="app-nav__item">
+          <a class="app-nav__link" href="#load">Load Extracts</a>
+        </li>
+        <li class="app-nav__item">
+          <a class="app-nav__link" href="#exceptions">Exception Queue</a>
+        </li>
+        <li class="app-nav__item">
+          <a class="app-nav__link" href="#mappings">Mapping Table</a>
+        </li>
+        <li class="app-nav__item">
+          <a class="app-nav__link" href="#report">Group Report</a>
+        </li>
+        <li class="app-nav__item">
+          <a class="app-nav__link" href="#sourcing">Strategic Sourcing</a>
+        </li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- The controller renders the active view into this container. -->
+  <main id="app" class="app-main" role="main"></main>
+
+  <footer class="app-footer" role="contentinfo">
+    <p class="app-footer__note">
+      Disclaimer: As a web-based class project prototype application developed by using HTML, CSS, vanilla JavaScript, all uploaded data is only processed and persisted in the browser.
+    </p>
+  </footer>
+
+  <!-- Boot the app controller as a native ES module (no build step, Req 1.1). -->
+  <script type="module" src="src/ui/appController.js"></script>
+  <script type="module">
+    import { resetApp } from "./src/ui/appController.js";
+    const btn = document.getElementById("reset-app");
+    if (btn) btn.addEventListener("click", () => {
+      if (window.confirm("Reset the app? This clears all loaded data, mappings, exceptions, and the audit trail, then reloads the seeded demo.")) resetApp();
+    });
+  </script>
+</body>
+</html>

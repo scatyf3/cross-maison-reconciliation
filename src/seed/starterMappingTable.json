@@ -1,0 +1,38 @@
+[
+  {
+    "id": "map-seed-1",
+    "maisonId": "LV",
+    "localSupplierCode": "SUP-1042",
+    "localAccountCode": "6110",
+    "lvmhSupplierId": "LVMH-SUP-000123",
+    "lvmhAccountCode": "ACCT-6110",
+    "status": "approved",
+    "approvedBy": "reviewer-01",
+    "approvedAt": "2025-01-10T09:00:00.000Z",
+    "origin": "seed"
+  },
+  {
+    "id": "map-seed-2",
+    "maisonId": "DIOR",
+    "localSupplierCode": "VND-85",
+    "localAccountCode": "6110-FR",
+    "lvmhSupplierId": "LVMH-SUP-000457",
+    "lvmhAccountCode": "ACCT-6110",
+    "status": "approved",
+    "approvedBy": "reviewer-01",
+    "approvedAt": "2025-01-11T14:30:00.000Z",
+    "origin": "seed"
+  },
+  {
+    "id": "map-seed-3",
+    "maisonId": "DIOR",
+    "localSupplierCode": "VND-87",
+    "localAccountCode": "6110",
+    "lvmhSupplierId": "LVMH-SUP-000457",
+    "lvmhAccountCode": "ACCT-6110",
+    "status": "approved",
+    "approvedBy": "reviewer-01",
+    "approvedAt": "2025-01-12T11:15:00.000Z",
+    "origin": "seed"
+  }
+]

@@ -1,0 +1,463 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create project skeleton and test-only package.json": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561756472
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561766044
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562077793
+      }
+    ],
+    "1.2 Define shared constants and enumerated vocabularies": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757404
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562080821
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562405886
+      }
+    ],
+    "2.1 Implement CSV parsing, serialization, and low-level helpers": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757496
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562409894
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562674520
+      }
+    ],
+    "3.1 Implement extract ingestion and processing-id assignment": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757548
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562680964
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562955052
+      }
+    ],
+    "4.1 Implement approved-mapping lookup and record normalization": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757606
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562971692
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563229254
+      }
+    ],
+    "5.1 Implement required-field, 3-way match, and duplicate-PO checks": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757643
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562973087
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563227360
+      }
+    ],
+    "6. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757682
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563502693
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563602195
+      }
+    ],
+    "7.1 Implement similarity helpers": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757725
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562411280
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562675912
+      }
+    ],
+    "7.2 Implement the read-only Recommendation_Agent": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757785
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562682839
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562956440
+      }
+    ],
+    "8.1 Implement consolidation into the LVMH common structure": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757819
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563233673
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563496967
+      }
+    ],
+    "9.1 Implement Group_Report builder and CSV export": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757853
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563235138
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563495632
+      }
+    ],
+    "10. Checkpoint - Ensure all core tests pass": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757891
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563605801
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563608415
+      }
+    ],
+    "11.1 Implement the localStorage wrapper and governance mutations": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561757970
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562683866
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562957792
+      }
+    ],
+    "12.1 Create seed CSV extracts and starter Mapping_Table": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758009
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562412728
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562677426
+      }
+    ],
+    "12.2 Implement first-load seed loader": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758044
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562974318
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563230236
+      }
+    ],
+    "13.1 Implement the app controller and hash router": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758080
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563611580
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564076333
+      }
+    ],
+    "13.2 Implement the Load Extracts and Exception Queue views": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758114
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564079462
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564280573
+      }
+    ],
+    "13.3 Implement the Mapping Table, Audit Trail, and Group Report views": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758175
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564080916
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564282396
+      }
+    ],
+    "13.4 Create the app shell HTML and styles": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758607
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564082168
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564283534
+      }
+    ],
+    "14.1 Integrate the end-to-end pipeline through the controller": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758914
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564287670
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564880472
+      }
+    ],
+    "14.3 Add GitHub Pages deployment setup and README": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561758983
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564288983
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564879356
+      }
+    ],
+    "15. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793561759046
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564883597
+      },
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564985490
+      }
+    ],
+    "1. Scaffold repository, module mode, and shared constants": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562405976
+      }
+    ],
+    "2. Implement CSV_Parser / CSV_Serializer": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562674619
+      }
+    ],
+    "3. Implement Ingestion_Module": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562955141
+      }
+    ],
+    "7. Implement similarity utilities and Recommendation_Agent": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562956537
+      }
+    ],
+    "11. Implement Browser_Store persistence boundary": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793562957852
+      }
+    ],
+    "5. Implement Validation_Module": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563227461
+      }
+    ],
+    "4. Implement Normalization_Module": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563229317
+      }
+    ],
+    "12. Implement seed data": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563230307
+      }
+    ],
+    "9. Implement Reporting_Module": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563495699
+      }
+    ],
+    "8. Implement Consolidation_Module": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793563497036
+      }
+    ],
+    "13. Implement UI shell and views": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564283630
+      }
+    ],
+    "14. Wire the full pipeline and finalize deployment": [
+      {
+        "executionId": "023ee554-39ac-44cd-af16-93ee3969c08c",
+        "chatSessionId": "sess_ee25ac11-0cec-4356-afcd-6872eb93e255",
+        "timestamp": 1793564880516
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+﻿# Dependencies (restored via npm install)
+node_modules/
+
+# Course source materials - not for public publishing
+LVMH_Finance_Approved_Transactions.csv
+Process Map.pptx
+SPAR.pdf
+
+# Local dev / scratch files
+_serve.mjs
+_*.mjs
+_*.cjs
+*.b64
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
