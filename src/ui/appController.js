@@ -52,6 +52,7 @@ import {
   approveMapping as storeApproveMapping,
   appendAudit,
   resetAll,
+  seedIfEmpty,
 } from "../store/browserStore.js";
 import { seedStoreIfEmpty } from "../seed/seedData.js";
 import { ingestExtract } from "../core/ingestion.js";
@@ -264,9 +265,48 @@ export function route(hash) {
   state.currentRoute = resolved;
 
   const container = appRoot();
-  if (!container) return; // non-browser context: nothing to render.
+  if (!container) return Promise.resolve(); // non-browser context: nothing to render.
 
-  renderView(ROUTES[resolved], container);
+  // Returned so callers (the trace replay player) can wait for the render.
+  return renderView(ROUTES[resolved], container);
+}
+
+/**
+ * Re-read every persisted collection from the Browser_Store into memory. Used
+ * after the store was swapped wholesale (trace replay start/stop).
+ * @returns {void}
+ */
+export function reloadStateFromStore() {
+  restoreState();
+}
+
+/**
+ * Put the app on a clean, freshly seeded state without reloading the page:
+ * clear the store, re-seed the starter Mapping_Table, and re-hydrate memory.
+ * The trace replay starts from here so a trace runs against the same initial
+ * data it was recorded on.
+ * @returns {Promise<void>}
+ */
+let cachedSeedMappingTable = null;
+
+export async function resetToSeed() {
+  resetAll();
+  try {
+    if (cachedSeedMappingTable) {
+      // Replay seeks reset often; skip re-fetching the seed files.
+      seedIfEmpty({ mappingTable: cachedSeedMappingTable.map((m) => ({ ...m })) });
+    } else {
+      const result = await seedStoreIfEmpty();
+      if (result && result.seedData) {
+        cachedSeedMappingTable = result.seedData.mappingTable;
+        state.seedExtracts = result.seedData.extracts || state.seedExtracts;
+        state.seedExtractMeta = result.seedData.extractMeta || state.seedExtractMeta;
+      }
+    }
+  } catch (err) {
+    logWarning("Re-seeding failed during reset.", err);
+  }
+  restoreState();
 }
 
 /**
@@ -618,14 +658,14 @@ function adviseEntry(exc) {
  * @param {string} reason reviewer approval note
  * @returns {{ ok:boolean, error?:string }}
  */
-export function resolveException(exceptionId, reason) {
+export function resolveException(exceptionId, reason, actor) {
   const index = state.exceptionQueue.findIndex((e) => e && e.id === exceptionId);
   if (index === -1) return { ok: false, error: "NOT_FOUND" };
   const entry = state.exceptionQueue[index];
   if (entry.reason === ExceptionReason.NO_MAPPING) {
     return { ok: false, error: "Approve a mapping for this record instead (it has no LVMH supplier yet)." };
   }
-  const reviewer = state.meta.reviewerId || "reviewer-01";
+  const reviewer = actor || state.meta.reviewerId || "reviewer-01";
   const consolidatedRecords = tag(consolidate([entry.record]), "override");
   state.consolidated = [...state.consolidated, ...consolidatedRecords];
   state.exceptionQueue = [
@@ -705,18 +745,50 @@ export function approveMapping(exceptionId, draft, reviewerId) {
   }
 
   // 2. Re-sync governance state and re-normalize the queue (Req 12.6).
+  //    Records a reviewer put on hold for correction stay held: a new mapping
+  //    fixes codes, not the data problem they were held for (Req 12.4).
   syncGovernanceState();
+  const held = state.exceptionQueue.filter((e) => e && e.status === "on_hold_for_correction");
+  const active = state.exceptionQueue.filter((e) => !e || e.status !== "on_hold_for_correction");
   const { resolved, stillQueued, failures } = renormalizeExceptions(
-    state.exceptionQueue,
+    active,
     state.mappingTable,
   );
 
-  // 3. Resolved records leave the queue and enter consolidation (Req 10.4/14.4).
-  const consolidatedAdded = tag(consolidate(resolved), "mapping");
+  // 3. Newly normalized records must still pass validation before they are
+  //    consolidated (Req 14.1). They skipped it at load time because they had
+  //    no mapping yet, so a duplicate PO or a missing goods receipt would
+  //    otherwise slip into the Group Report. Failures go back to the queue
+  //    under the same exception id with the validation reason.
+  const prior = new Map();
+  const remember = (rec) => {
+    if (!rec || !rec.maisonId) return;
+    const list = prior.get(rec.maisonId) || [];
+    list.push(rec);
+    prior.set(rec.maisonId, list);
+  };
+  for (const c of state.consolidated) remember(c);
+  for (const e of [...stillQueued, ...held]) remember(e && e.record);
+  const passed = [];
+  const invalid = [];
+  for (const record of resolved) {
+    const result = validateRecord(record, { priorRecordsInMaison: prior.get(record.maisonId) || [] });
+    remember(record);
+    if (result.passed) {
+      passed.push(record);
+    } else {
+      const exc = makeExceptionEntry(record, result.reason, result.detail);
+      adviseEntry(exc);
+      invalid.push(exc);
+    }
+  }
+
+  // Resolved, valid records leave the queue and enter consolidation (Req 10.4/14.4).
+  const consolidatedAdded = tag(consolidate(passed), "mapping");
   state.consolidated = [...state.consolidated, ...consolidatedAdded];
 
   // NORMALIZATION_FAILED entries are retained in the queue (Req 12.7).
-  state.exceptionQueue = [...stillQueued, ...failures];
+  state.exceptionQueue = [...stillQueued, ...failures, ...invalid, ...held];
 
   // Count records resolved through finance judgment (Req 15.3).
   const counts = ensureCounts();
@@ -732,8 +804,10 @@ export function approveMapping(exceptionId, draft, reviewerId) {
   return {
     ok: true,
     entry: result.entry,
-    resolvedCount: resolved.length,
+    resolvedCount: passed.length,
     failedCount: failures.length,
+    requeuedCount: invalid.length,
+    requeued: invalid.map((e) => ({ id: e.id, reason: e.reason })),
   };
 }
 
@@ -746,7 +820,7 @@ export function approveMapping(exceptionId, draft, reviewerId) {
  * @param {string} reason       the reviewer-provided rejection reason
  * @returns {{ ok: boolean, error?: string }}
  */
-export function rejectResolution(exceptionId, reason) {
+export function rejectResolution(exceptionId, reason, actor) {
   const index = state.exceptionQueue.findIndex((e) => e && e.id === exceptionId);
   if (index === -1) {
     return { ok: false, error: "NOT_FOUND" };
@@ -762,6 +836,7 @@ export function rejectResolution(exceptionId, reason) {
     rejectionReason: reason != null ? reason : "",
     holdCount: (existing.holdCount || 0) + 1,
     heldAt: new Date().toISOString(),
+    heldBy: actor || state.meta.reviewerId || "reviewer-01",
   };
   const without = [
     ...state.exceptionQueue.slice(0, index),
@@ -804,14 +879,14 @@ export function resetApp() {
 // Manually add an approved Mapping_Entry from the Mapping Table screen. It
 // reuses the governed approval path (validate, conflict-check, audit) and then
 // re-runs the Exception_Queue so waiting records the mapping now covers resolve.
-export function addMapping(draft) {
-  return approveMapping(null, { ...draft, origin: "manual" }, state.meta.reviewerId);
+export function addMapping(draft, actor) {
+  return approveMapping(null, { origin: "manual", ...draft }, actor || state.meta.reviewerId);
 }
 
 // Delete a Mapping_Entry by id. Writes a DELETE audit entry for traceability.
 // Does not alter already-consolidated records; it removes the standing rule so
 // future records with those codes no longer auto-normalize.
-export function deleteMapping(id, reason) {
+export function deleteMapping(id, reason, actor) {
   const idx = state.mappingTable.findIndex((m) => m && m.id === id);
   if (idx === -1) return { ok: false, error: "NOT_FOUND" };
   const removed = state.mappingTable[idx];
@@ -821,7 +896,7 @@ export function deleteMapping(id, reason) {
   ];
   save(KEYS.mappingTable, state.mappingTable);
   appendAudit({
-    actor: state.meta.reviewerId || "reviewer-01",
+    actor: actor || state.meta.reviewerId || "reviewer-01",
     timestamp: new Date().toISOString(),
     action: "DELETE",
     priorValue: removed,

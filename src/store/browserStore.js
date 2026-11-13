@@ -299,6 +299,39 @@ export function resetAll() {
   }
 }
 
+/**
+ * Capture the raw stored value of every Browser_Store key, so a temporary
+ * session (trace replay) can run on clean state and put the reviewer's data
+ * back afterwards with restoreAll().
+ * @returns {Object<string, string|null>}
+ */
+export function snapshotAll() {
+  const snap = {};
+  for (const key of Object.values(KEYS)) {
+    try { snap[key] = backend.getItem(key); } catch { snap[key] = null; }
+  }
+  return snap;
+}
+
+/**
+ * Restore a snapshotAll() capture exactly: keys that were absent are removed.
+ * @param {Object<string, string|null>} snap
+ * @returns {void}
+ */
+export function restoreAll(snap) {
+  for (const key of Object.values(KEYS)) {
+    const value = snap ? snap[key] : null;
+    try {
+      if (value == null) backend.removeItem(key);
+      else backend.setItem(key, value);
+    } catch {
+      degradeToMemory(backend);
+      if (value == null) backend.removeItem(key);
+      else backend.setItem(key, value);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Governance mutation: the approval path.
 // ---------------------------------------------------------------------------

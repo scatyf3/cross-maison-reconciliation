@@ -103,6 +103,7 @@ function buildRow(entry, handlers) {
   const row = el("tr", { class: "mapping-row" });
   const status = entry && entry.status ? String(entry.status) : "unknown";
   row.className = status === "approved" ? "mapping-row approved" : "mapping-row draft";
+  if (entry && entry.id != null) row.setAttribute("data-mapping-id", String(entry.id));
   for (const col of COLUMNS) {
     const td = el("td", { text: cellText(entry, col.key) });
     if (col.key === "status") td.className = "status status-" + status;

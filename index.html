@@ -28,7 +28,10 @@
           <p class="app-header__subtitle">LVMH Governed Information Layer + Strategic Sourcing Prototype</p>
         </div>
       </div>
-      <button type="button" id="reset-app" class="app-header__reset" title="Clear all data and start over">Reset</button>
+      <div class="app-header__actions">
+        <button type="button" id="replay-trace" class="app-header__reset" title="Replay an AI agent's trace step by step">Replay trace</button>
+        <button type="button" id="reset-app" class="app-header__reset" title="Clear all data and start over">Reset</button>
+      </div>
     </div>
     <!--
       Primary navigation across the five views (Req 17.2). Links use hash
@@ -69,6 +72,9 @@
   <script type="module" src="src/ui/appController.js"></script>
   <script type="module">
     import { resetApp } from "./src/ui/appController.js";
+    import { openTraceDialog } from "./src/ui/replay/replayPlayer.js";
+    const replayBtn = document.getElementById("replay-trace");
+    if (replayBtn) replayBtn.addEventListener("click", () => openTraceDialog());
     const btn = document.getElementById("reset-app");
     if (btn) btn.addEventListener("click", () => {
       if (window.confirm("Reset the app? This clears all loaded data, mappings, exceptions, and the audit trail, then reloads the seeded demo.")) resetApp();

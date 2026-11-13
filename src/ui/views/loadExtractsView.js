@@ -89,6 +89,7 @@ export function render(container, state, handlers) {
       const csvText = seedExtracts[meta.id];
       const btn = el("button", { type: "button", class: "btn btn-load-seed", text: "Load " + (meta.label || meta.id) });
       btn.disabled = !(typeof csvText === "string" && csvText.length > 0);
+      btn.setAttribute("data-maison", meta.id);
       btn.addEventListener("click", () => { runNineColumn(handlers, meta.id, csvText, section); });
       list.appendChild(btn);
     }
