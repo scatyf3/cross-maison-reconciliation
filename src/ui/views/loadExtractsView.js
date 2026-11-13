@@ -81,14 +81,27 @@ export function render(container, state, handlers) {
   const seedMeta = Array.isArray(state && state.seedExtractMeta) ? state.seedExtractMeta : [];
   const seedExtracts = state && state.seedExtracts && typeof state.seedExtracts === "object" ? state.seedExtracts : {};
   if (seedMeta.length > 0) {
+    // The sample extracts are preloaded on first visit. A Maison whose
+    // records are already in the system is shown as loaded: loading the same
+    // file again would import every invoice twice.
+    const present = new Set();
+    for (const c of (state && state.consolidated) || []) if (c && c.maisonId) present.add(c.maisonId);
+    for (const e of (state && state.exceptionQueue) || []) if (e && e.maisonId) present.add(e.maisonId);
+    const allLoaded = seedMeta.every((m) => m && present.has(m.id));
     const sample = el("details", { class: "sample-data" });
-    sample.appendChild(el("summary", { text: "No file handy? Try the built-in sample data" }));
+    sample.appendChild(el("summary", { text: allLoaded
+      ? "Sample data: Louis Vuitton, Dior and Fendi are already loaded"
+      : "No file handy? Try the built-in sample data" }));
+    if (allLoaded) {
+      sample.appendChild(el("p", { class: "muted sample-data__note", text: "The three sample extracts were loaded when the app first opened. Use Reset (top right) to start over from them." }));
+    }
     const list = el("div", { class: "sample-buttons" });
     for (const meta of seedMeta) {
       if (!meta || !meta.id) continue;
       const csvText = seedExtracts[meta.id];
-      const btn = el("button", { type: "button", class: "btn btn-load-seed", text: "Load " + (meta.label || meta.id) });
-      btn.disabled = !(typeof csvText === "string" && csvText.length > 0);
+      const loaded = present.has(meta.id);
+      const btn = el("button", { type: "button", class: "btn btn-load-seed", text: (loaded ? "✓ " : "Load ") + (meta.label || meta.id) + (loaded ? " loaded" : "") });
+      btn.disabled = loaded || !(typeof csvText === "string" && csvText.length > 0);
       btn.setAttribute("data-maison", meta.id);
       btn.addEventListener("click", () => { runNineColumn(handlers, meta.id, csvText, section); });
       list.appendChild(btn);

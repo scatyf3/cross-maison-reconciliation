@@ -32,21 +32,23 @@ Any static file server works (`php -S localhost:8000`, the VS Code "Live Server"
 
 ### Trying the seeded demo data
 
-On the very first load (when the browser store is empty) the app seeds the starter Mapping Table and the three sample Maison extracts. A good walkthrough:
+On the very first load (when the browser store is empty) the app seeds the starter Mapping Table and runs the three sample Maison extracts through the pipeline, so it opens on data that is already reconciled as far as it can go automatically. A good walkthrough:
 
-1. Go to **Load Extracts** and load the three seeded extracts.
-2. **Louis Vuitton** has an approved mapping and a consistent 3-way match, so its records **auto-normalize** straight into the consolidated data.
-3. **Dior** and **Fendi** land in the **Exception Queue** — Dior as an ambiguous mapping (a near-miss candidate the agent suggests with evidence), Fendi on the validation-failure path.
-4. Open the **Exception Queue**, review the agent's suggestion and evidence for Dior, and **approve** the mapping. The record is re-normalized and leaves the queue; the Exception Queue, Mapping Table, and Group Report views all update to reflect the resolution.
-5. Open the **Group Report** and use **Export** to download the consolidated report as CSV.
+1. **Louis Vuitton** has an approved mapping and a consistent 3-way match, so its 5 records have already **auto-normalized** into the consolidated data.
+2. **Dior** and **Fendi** are waiting in the **Exception Queue** (4 and 5 records) because no approved mapping covers their local codes. Dior has a near-miss candidate the recommender scores with evidence; Fendi has none.
+3. Open the **Exception Queue** and **approve** a mapping for Dior. Its records are re-normalized, validated and consolidated; the Exception Queue, Mapping Table, and Group Report views all update.
+4. Approve a mapping for Fendi. Three records consolidate; two fail validation and go back to the queue (a duplicate PO and a missing goods receipt), where a reviewer can hold or clear them.
+5. Open the **Group Report** and use **Export** to download the consolidated report.
 
-Your mapping decisions, exceptions, consolidated data, and audit trail persist in the browser across reloads. To start over from the seeded state, clear the site's local storage for the page.
+**Load Extracts** still takes your own CSV (nine-column extract or the 30-column finance export). The sample extracts show as loaded there; loading one again would import every invoice twice.
 
-### Agent governance: replaying an agent's trace
+Your mapping decisions, exceptions, consolidated data, and audit trail persist in the browser across reloads. **Reset** (top right) starts over from the seeded, preloaded state.
+
+## Agent governance: replaying an agent's trace
 
 **Replay trace** (top right) shows how this system governs an AI agent that works on the reconciliation through tool calls. The division of work:
 
-- **The reviewer loads the data.** Which extracts enter the governed layer is a human decision. A trace records it in its `setup` list, and the replay runs those loads first, as the reviewer.
+- **The data is already there.** On first visit (and after **Reset**) the app runs the three sample extracts through the pipeline, as an ERP feed would, so the agent starts from data already in the governed layer: 5 consolidated LV lines and 9 exceptions (4 Dior, 5 Fendi). Which data enters the layer is a human or pipeline decision, never the agent's. A trace recorded on other data can list its own `setup` loads instead; the replay then starts from an empty store and runs them first, as the reviewer.
 - **The agent reads through read-only SQL** (`query_sql`), then changes data only through governed tools (`approve_mapping`, `reject_resolution`, `resolve_exception`). Its SQL runs in SQLite ([sql.js](https://sql.js.org), loaded from cdnjs on first use) against a fresh copy of the live data, over four tables: `consolidated_records`, `exception_queue`, `mapping_table`, `audit_trail` ([`src/core/sqlView.js`](src/core/sqlView.js)).
 
 Every agent tool call is replayed step by step in the real UI. Before a call reaches the data, it passes through the agent policy in [`src/core/agentPolicy.js`](src/core/agentPolicy.js):
@@ -71,11 +73,11 @@ Bundled examples in [`seed/traces/`](seed/traces/):
 | `02_guessed_mapping` | Maps Fendi's supplier to Dior's without asking; says the queue is clear | G2 blocks the mapping. Unchecked, the umbrella contract goes to the wrong supplier |
 | `03_forced_queue_clearing` | Overrides a possible duplicate invoice and a missing goods receipt to "close today" | G3 blocks the overrides; G4 refuses even the signed-off one. Unchecked: +€9,670 |
 | `04_unverified_numbers` | Queries a stale copy of the data, presents figures no query returned | Nothing to block; G5 and G6 flag it |
-| `05_out_of_scope` | Loads an extract itself, deletes a mapping with raw SQL, lowers its own match threshold, emails spend to a supplier | G1 blocks all four |
+| `05_out_of_scope` | Re-imports an extract itself, deletes a mapping with raw SQL, lowers its own match threshold, emails spend to a supplier | G1 blocks all four. Unchecked, every Fendi invoice is queued twice |
 
 Notes:
 - **Your data is safe.** The replay runs on a fresh copy of the seed data. Your stored data is set aside and restored exactly on **Exit replay**.
-- **Your own traces:** Anthropic Messages JSON (an array, or `{ "title", "description", "agent", "setup": [...], "messages": [...] }`), or Claude Code / Agent SDK JSONL. A setup entry looks like `{ "action": "load_extract", "maison_id": "LV", "file": "lv_extract.csv" }`. Without a setup, nothing is loaded and the agent's queries return no rows. Tool names are mapped in [`src/core/agentTrace.js`](src/core/agentTrace.js) (`TOOL_ALIASES`, `OBSERVE_ALIASES`). Common SQL tool names (`query_sql`, `run_sql`, `read_query`, `write_query`, `list_tables`, `describe_table`, …) and MCP prefixes are recognised. Tools with no mapping are treated as outside the agent's scope (G1).
+- **Your own traces:** Anthropic Messages JSON (an array, or `{ "title", "description", "agent", "setup": [...], "messages": [...] }`), or Claude Code / Agent SDK JSONL. Without a `setup`, the replay starts from the preloaded sample data. With one (entries like `{ "action": "load_extract", "maison_id": "LV", "file": "lv_extract.csv" }`), it starts from an empty store and runs those loads first. Tool names are mapped in [`src/core/agentTrace.js`](src/core/agentTrace.js) (`TOOL_ALIASES`, `OBSERVE_ALIASES`). Common SQL tool names (`query_sql`, `run_sql`, `read_query`, `write_query`, `list_tables`, `describe_table`, …) and MCP prefixes are recognised. Tools with no mapping are treated as outside the agent's scope (G1).
 - **Ids from another session** (e.g. `exc-run-12:000003`) are resolved through the invoice the agent saw next to that id in its own SQL results, then by `invoice_ref` / `po_ref` in the call, then by sequence number. Every remap is shown on the step.
 - The SQL engine is the only part fetched from a CDN, and only when a trace runs SQL. The rest of the app stays dependency-free. `sql.js` is a dev dependency so the tests use the same engine.
 

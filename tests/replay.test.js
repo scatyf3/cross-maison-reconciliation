@@ -29,11 +29,18 @@ const TRACE = (name) => readText("seed/traces/" + name);
 useInMemoryBackend();
 const sqlRunner = createSqlRunner(await initSqlJs());
 
-async function reset() {
+const SEED_META = [{ id: "LV" }, { id: "DIOR" }, { id: "FENDI" }];
+
+// Mirrors controller.resetToSeed without fetch: starter mappings, then (by
+// default) the three sample extracts, as the app has them on first load.
+async function reset({ preload = true } = {}) {
   resetAll();
   seedIfEmpty({ mappingTable: STARTER });
   controller.reloadStateFromStore();
-  controller.getState().seedExtracts = {};
+  const st = controller.getState();
+  st.seedExtractMeta = SEED_META;
+  st.seedExtracts = Object.fromEntries(SEED_META.map((m) => [m.id, readText("seed/" + m.id.toLowerCase() + "_extract.csv")]));
+  if (preload) controller.preloadSeedExtracts();
 }
 
 async function replay(text, enforce = true) {
@@ -140,7 +147,6 @@ test("agents get read-only SQL", () => {
 
 test("the SQL view matches the Group Report", async () => {
   await reset();
-  controller.loadExtract("LV", readText("seed/lv_extract.csv"));
   const { rows } = sqlRunner.run(state(), "SELECT COUNT(*) AS n, ROUND(SUM(spend_eur), 2) AS total FROM consolidated_records");
   assert.deepEqual(rows, [{ n: 5, total: controller.buildCurrentReport().totalSpendEur }]);
 });
@@ -150,11 +156,34 @@ test("the SQL view matches the Group Report", async () => {
 // agent starts from SQL.
 // ---------------------------------------------------------------------------
 
-test("setup loads run as the reviewer, before the agent", async () => {
+test("the app starts with the sample extracts preloaded", async () => {
+  await reset();
+  assert.equal(state().consolidated.length, 5);
+  assert.equal(state().exceptionQueue.length, 9);
+  assert.deepEqual([...new Set(state().exceptionQueue.map((x) => x.id.split(":")[0]))], ["exc-run-2", "exc-run-3"]);
+  // The bundled traces start from there: no setup, and the agent never loads data.
+  for (const name of ["01_governed_agent.json", "05_out_of_scope.json"]) {
+    const { steps } = parseTrace(TRACE(name));
+    assert.ok(!steps.some((x) => x.kind === "setup"));
+  }
   const { steps } = parseTrace(TRACE("01_governed_agent.json"));
-  assert.deepEqual(steps.slice(0, 3).map((x) => [x.kind, x.input.maison_id, x.actor]), [["setup", "LV", "reviewer-01"], ["setup", "DIOR", "reviewer-01"], ["setup", "FENDI", "reviewer-01"]]);
-  assert.ok(!steps.some((x) => x.kind === "action" && x.op === "loadExtract"), "the governed agent never loads data");
+  assert.ok(!steps.some((x) => x.op === "loadExtract"));
   assert.equal(steps.find((x) => x.kind === "action").op, "querySql", "the agent starts by reading through SQL");
+});
+
+test("a trace with its own setup starts from an empty store and loads as the reviewer", async () => {
+  const trace = JSON.stringify({
+    setup: [{ action: "load_extract", maison_id: "LV", file: "lv_extract.csv", actor: "reviewer-01" }],
+    messages: [
+      { role: "assistant", content: [{ type: "tool_use", id: "q", name: "query_sql", input: { query: "SELECT maison, COUNT(*) AS n FROM consolidated_records GROUP BY maison" } }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "q", content: JSON.stringify([{ maison: "LV", n: 5 }]) }] },
+    ],
+  });
+  const e = await replay(trace);
+  assert.deepEqual(e.outcomes.map((o) => [o.step.kind, o.status]), [["setup", "ok"], ["action", "ok"]]);
+  assert.equal(e.outcomes[0].step.actor, "reviewer-01");
+  assert.deepEqual(e.outcomes[1].findings, [], "only LV is loaded, exactly as the agent saw");
+  assert.equal(state().exceptionQueue.length, 0);
 });
 
 test("01 governed agent: nothing blocked, nothing flagged, held lines stay held", async () => {
@@ -233,12 +262,13 @@ test("05 out of scope: G1 blocks the agent's load, SQL write, threshold change a
   assert.ok(blocked.every((o) => policies(o).join() === "G1"));
   assert.match(blocked[1].findings[0].message, /Direct SQL writes would bypass/);
   assert.ok(state().mappingTable.some((m) => m.id === "map-seed-2"));
-  assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 0);
+  assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 5);
 
   const o = await replay(TRACE("05_out_of_scope.json"), false);
   assert.equal(o.governanceReport().wouldBlock, 4);
-  // The agent's own load goes through when ungoverned; the SQL write never runs.
-  assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 5);
+  // Ungoverned, the agent's re-import doubles every Fendi invoice; the SQL
+  // write still never runs.
+  assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 10);
   assert.ok(state().mappingTable.some((m) => m.id === "map-seed-2"));
 });
 

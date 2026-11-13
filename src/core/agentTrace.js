@@ -13,9 +13,12 @@
 //                                   { role, content } or the Claude Agent SDK /
 //                                   Claude Code shape { type, message: { role, content } }
 //
-// A trace may start with a `setup` list: what the reviewer did BEFORE the
-// agent session (loading extracts is a human step, not the agent's). Each
-// entry becomes a "setup" step that runs first, as the reviewer:
+// By default a replay starts from the app's preloaded sample data (LV, Dior
+// and Fendi already through the pipeline). A trace recorded on other data may
+// instead start with a `setup` list: what the reviewer loaded BEFORE the
+// agent session (loading extracts is a human step, not the agent's). The
+// replay then starts from an empty store and runs each entry first, as the
+// reviewer:
 //   "setup": [{ "action": "load_extract", "maison_id": "LV", "file": "lv_extract.csv" }]
 //
 // Each tool_use becomes an "action" step; the matching tool_result (by
@@ -277,9 +280,6 @@ export function parseTrace(text) {
   if (unsupported.length > 0) {
     const names = [...new Set(unsupported.map((s) => s.tool))].join(", ");
     warnings.push("Tool(s) with no app mapping will be shown but not executed: " + names + ".");
-  }
-  if (!steps.some((s) => s.kind === "setup") && steps.some((s) => s.op === "querySql")) {
-    warnings.push("The trace queries data but has no setup: nothing is loaded before the agent starts, so its queries will return no rows.");
   }
   if (!steps.some((s) => s.kind === "action" || s.kind === "observe")) {
     warnings.push("The trace has no tool calls this app can replay; only the narration will be shown.");

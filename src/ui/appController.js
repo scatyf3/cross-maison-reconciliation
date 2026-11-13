@@ -54,7 +54,7 @@ import {
   resetAll,
   seedIfEmpty,
 } from "../store/browserStore.js";
-import { seedStoreIfEmpty } from "../seed/seedData.js";
+import { loadSeedData } from "../seed/seedData.js";
 import { ingestExtract } from "../core/ingestion.js";
 import { normalizeBatch, renormalizeExceptions } from "../core/normalization.js";
 import { validateRecord } from "../core/validation.js";
@@ -204,13 +204,16 @@ function ensureCounts() {
  * @returns {Promise<void>}
  */
 export async function init() {
-  // First-load seeding (Req 2.6). Never clobbers prior reviewer edits.
+  // First-load seeding (Req 2.6). Never clobbers prior reviewer edits. On the
+  // very first load the three sample extracts are also run through the
+  // pipeline, so the app opens on data that is already in the governed layer
+  // (as it would be after an ERP feed) rather than on an empty store.
+  let firstLoad = false;
   try {
-    const result = await seedStoreIfEmpty();
-    if (result && result.seedData) {
-      state.seedExtracts = result.seedData.extracts || {};
-      state.seedExtractMeta = result.seedData.extractMeta || [];
-    }
+    const seedData = await getSeedData();
+    state.seedExtracts = seedData.extracts || {};
+    state.seedExtractMeta = seedData.extractMeta || [];
+    firstLoad = seedIfEmpty({ mappingTable: cloneTable(seedData.mappingTable) });
   } catch (err) {
     // Seeding failure must not block the app; surface it and continue with
     // whatever is already persisted (graceful degradation).
@@ -219,6 +222,7 @@ export async function init() {
 
   // Restore persisted collections into memory (Req 2.5).
   restoreState();
+  if (firstLoad) preloadSeedExtracts();
 
   // Wire the hash router (browser only).
   if (typeof window !== "undefined") {
@@ -280,33 +284,52 @@ export function reloadStateFromStore() {
   restoreState();
 }
 
+// The seed files are fetched once per page; replay seeks reset often.
+let seedDataPromise = null;
+function getSeedData() {
+  if (!seedDataPromise) seedDataPromise = loadSeedData().catch((err) => { seedDataPromise = null; throw err; });
+  return seedDataPromise;
+}
+
+function cloneTable(table) {
+  return (table || []).map((m) => ({ ...m }));
+}
+
+/**
+ * Run every sample extract (LV, Dior, Fendi) through the pipeline, in that
+ * order, so they get run ids run-1..run-3. Used on first load and on reset.
+ * @returns {void}
+ */
+export function preloadSeedExtracts() {
+  for (const meta of state.seedExtractMeta) {
+    const csv = state.seedExtracts[meta.id];
+    if (typeof csv === "string" && csv !== "") loadExtract(meta.id, csv);
+  }
+}
+
 /**
  * Put the app on a clean, freshly seeded state without reloading the page:
- * clear the store, re-seed the starter Mapping_Table, and re-hydrate memory.
- * The trace replay starts from here so a trace runs against the same initial
- * data it was recorded on.
+ * clear the store, re-seed the starter Mapping_Table, re-hydrate memory and,
+ * unless `preload` is false, load the three sample extracts again. The trace
+ * replay starts from here; a trace that brings its own `setup` loads asks for
+ * an empty store instead, so its data is not imported twice.
+ *
+ * @param {{ preload?: boolean }} [opts]
  * @returns {Promise<void>}
  */
-let cachedSeedMappingTable = null;
-
-export async function resetToSeed() {
-  resetAll();
+export async function resetToSeed({ preload = true } = {}) {
+  let seedData = null;
   try {
-    if (cachedSeedMappingTable) {
-      // Replay seeks reset often; skip re-fetching the seed files.
-      seedIfEmpty({ mappingTable: cachedSeedMappingTable.map((m) => ({ ...m })) });
-    } else {
-      const result = await seedStoreIfEmpty();
-      if (result && result.seedData) {
-        cachedSeedMappingTable = result.seedData.mappingTable;
-        state.seedExtracts = result.seedData.extracts || state.seedExtracts;
-        state.seedExtractMeta = result.seedData.extractMeta || state.seedExtractMeta;
-      }
-    }
+    seedData = await getSeedData();
+    state.seedExtracts = seedData.extracts || state.seedExtracts;
+    state.seedExtractMeta = seedData.extractMeta || state.seedExtractMeta;
   } catch (err) {
     logWarning("Re-seeding failed during reset.", err);
   }
+  resetAll();
+  if (seedData) seedIfEmpty({ mappingTable: cloneTable(seedData.mappingTable) });
   restoreState();
+  if (preload) preloadSeedExtracts();
 }
 
 /**

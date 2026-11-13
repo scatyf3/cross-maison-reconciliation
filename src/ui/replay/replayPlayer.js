@@ -550,9 +550,9 @@ function renderIntro() {
     + (n("unsupported") ? ", " + n("unsupported") + " calls to tools outside the app" : "") + "). "
     + (session.enforce ? "Mode: Enforce. Policy violations are blocked." : "Mode: Observe. Everything runs; violations are only marked.")
     + " Press Play, or step through with ▶|." }));
-  if (!steps.some((x) => x.kind === "setup")) {
-    card.appendChild(el("p", { class: "replay-step__note", text: "This trace has no setup, so nothing is loaded before the agent starts. Add a \"setup\" list (the extracts the reviewer loaded) for its queries to return data." }));
-  }
+  card.appendChild(el("p", { class: "replay-step__note", text: steps.some((x) => x.kind === "setup")
+    ? "This trace lists its own setup, so the replay starts from an empty store and runs the reviewer's loads first."
+    : "Starting point: the app's preloaded data (the LV, Dior and Fendi extracts are already in the governed layer). The agent starts from there." }));
 }
 
 const ROLE_LABEL = { user: "User", agent: "Agent", thinking: "Agent thinking" };

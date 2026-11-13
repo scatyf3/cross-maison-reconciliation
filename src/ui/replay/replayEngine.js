@@ -38,7 +38,8 @@ const AUDITED_OPS = new Set(["approveMapping", "addMapping", "resolveException",
  * @param {Object} deps
  * @param {Object[]} deps.steps       steps from parseTrace()
  * @param {Object}   deps.ops         controller operations (loadExtract, ...)
- * @param {Function} deps.reset       async () => void; puts the app on clean seeded state
+ * @param {Function} deps.reset       async ({ preload }) => void; puts the app on clean seeded
+ *                                    state, with the sample extracts loaded unless preload is false
  * @param {Function} deps.getState    () => live controller state
  * @param {Function} deps.fetchText   async (path) => string; reads a CSV the trace refers to
  * @param {Function} [deps.sql]       async (state, query) => { columns, rows, truncated }; runs agent SQL
@@ -48,6 +49,9 @@ const AUDITED_OPS = new Set(["approveMapping", "addMapping", "resolveException",
 export function createReplayEngine({ steps, ops, reset, getState, fetchText, sql, enforce = true, actor = "agent" }) {
   let position = 0;
   let ctx = freshContext();
+  // A trace that lists its own setup loads starts from an empty store; any
+  // other trace starts from the app's preloaded sample data.
+  const hasSetup = steps.some((s) => s.kind === "setup");
   const outcomes = new Array(steps.length).fill(null);
 
   function freshContext() {
@@ -173,13 +177,15 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, sql
 
     // G1 first: an out-of-scope call is never even resolved against the data.
     const scope = checkScope(op, step.tool);
-    if (scope.length > 0 && (enforce || !op)) {
-      // Without an app operation the call cannot run in either mode; in
-      // Observe mode it is reported as "would block" rather than blocked.
+    if (scope.length > 0) {
+      // In Observe mode a scope violation is reported as "would block" and
+      // the call still runs (if the app has such an operation at all).
       if (!enforce) for (const f of scope) f.severity = "would-block";
       plan.findings.push(...scope);
-      plan.blocked = true;
-      return plan;
+      if (enforce || !op) {
+        plan.blocked = true;
+        return plan;
+      }
     }
 
     try {
@@ -189,7 +195,7 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, sql
       return plan;
     }
 
-    const findings = checkAction(plan.subject, ctx.history);
+    const findings = checkAction(plan.subject, ctx.history).filter((f) => !(scope.length > 0 && f.policy === "G1"));
     plan.findings.push(...findings);
     if (findings.some((f) => f.severity === "block")) {
       if (enforce) plan.blocked = true;
@@ -508,7 +514,7 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, sql
   /** Reset to clean state and silently replay up to (not including) `index`. */
   async function seek(index) {
     const target = Math.max(0, Math.min(index, steps.length));
-    await reset();
+    await reset({ preload: !hasSetup });
     ctx = freshContext();
     position = 0;
     outcomes.fill(null);
