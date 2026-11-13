@@ -6,7 +6,8 @@
 // policy before it reaches the controller, the same way a production gateway
 // would sit between an agent and the governed data. Three layers:
 //
-//   Preventive  G1 tool scope, G2 evidence for mappings, G3 override authority
+//   Preventive  G1 tool scope (incl. read-only SQL; loading data is a
+//               reviewer step), G2 evidence for mappings, G3 override authority
 //               -> violations are BLOCKED (in Enforce mode) and never run.
 //               G4 hard controls are the app's own checks (conflicting or
 //               invalid mappings, overriding an unmapped record); they reject
@@ -19,9 +20,11 @@
 //
 // The policy only decides; the replay engine applies the decision.
 
+import { checkReadOnly } from "./sqlView.js";
+
 export const POLICIES = Object.freeze({
   G1: { id: "G1", name: "Tool scope", layer: "Preventive",
-    rule: "Agents may load extracts, read views, approve evidenced mappings and put records on hold. They may not delete governed mappings or call tools outside the app." },
+    rule: "Agents read data through read-only SQL and change it only through governed tools (approve evidenced mappings, put records on hold). Loading extracts is a reviewer step. Agents may not write through SQL, delete governed mappings, change control settings, or call tools outside the app." },
   G2: { id: "G2", name: "Evidence for mappings", layer: "Preventive",
     rule: "An agent may approve a mapping only if the recommender suggested exactly those LVMH codes, or a person confirmed them in the conversation. Otherwise the mapping goes to a human reviewer as a proposal." },
   G3: { id: "G3", name: "Override authority", layer: "Preventive",
@@ -38,7 +41,7 @@ export const POLICIES = Object.freeze({
 
 /** Operations an agent is allowed to request at all (G1). */
 const AGENT_ALLOWED_OPS = new Set([
-  "loadExtract", "loadFinanceExtract", "approveMapping", "addMapping", "resolveException", "rejectResolution",
+  "querySql", "describeSchema", "approveMapping", "addMapping", "resolveException", "rejectResolution",
 ]);
 
 const AFFIRMATIVE = /^\s*(yes|yep|yeah|correct|confirmed?|approved?|go ahead|do it|ok(ay)?|sure|right|that'?s right|是|对|可以|确认|没错|同意)\b/i;
@@ -55,8 +58,14 @@ export function checkAction(subject, history) {
   const findings = [];
   const op = subject.op;
 
-  if (!op || !AGENT_ALLOWED_OPS.has(op)) {
-    findings.push(finding("G1", "block", scopeMessage(op, subject.tool)));
+  const scope = checkScope(op, subject.tool);
+  if (scope.length > 0) return scope;
+
+  if (op === "querySql") {
+    const ro = checkReadOnly(subject.sql);
+    if (!ro.ok) {
+      findings.push(finding("G1", "block", "Direct SQL writes would bypass mapping approval, validation and the Audit Trail. " + ro.reason));
+    }
     return findings;
   }
 
@@ -98,6 +107,16 @@ export function checkAction(subject, history) {
 }
 
 /**
+ * G1 scope only: may an agent call this operation at all? (Checked before the
+ * call's arguments are even resolved against the data.)
+ * @returns {Object[]} a G1 block finding, or []
+ */
+export function checkScope(op, tool) {
+  if (!op || !AGENT_ALLOWED_OPS.has(op)) return [finding("G1", "block", scopeMessage(op, tool))];
+  return [];
+}
+
+/**
  * Post-execution check: does the result the agent saw in its trace match the
  * replay? Only numeric/boolean fields both sides report are compared.
  *
@@ -124,6 +143,55 @@ export function checkResult(step, replayed, ctx) {
     ? " Expected here: an earlier step was blocked, so the governed data diverged from the agent's run."
     : " Nothing was blocked before this step, so the agent was working from different data (stale extract, edited trace, or a fabricated result).";
   return [finding("G5", ctx && ctx.blockedSoFar > 0 ? "info" : "flag", diffs.join("; ") + "." + why)];
+}
+
+/**
+ * Post-execution check for a SQL read: does the result the agent saw match
+ * the rows the governed data returns now? Rows are compared as a multiset,
+ * numbers to the cent. Session-specific columns (ids, timestamps) are
+ * skipped, since a replay allocates its own.
+ *
+ * @param {Object} step            the trace step (with traceResult)
+ * @param {{rows: Object[]}} replayed  rows the replay produced
+ * @param {{ blockedSoFar: number }} ctx
+ */
+export function checkSqlResult(step, replayed, ctx) {
+  if (!step.traceResult || !replayed) return [];
+  const seen = rowsFrom(step.traceResult.text);
+  if (!seen) return [];
+  const mine = replayed.rows || [];
+  const norm = (row) => JSON.stringify(Object.keys(row).filter((k) => !SESSION_COLUMNS.test(k)).sort()
+    .map((k) => [k, typeof row[k] === "number" ? Math.round(row[k] * 100) / 100 : row[k] === undefined ? null : row[k]]));
+  const a = seen.map(norm).sort();
+  const b = mine.map(norm).sort();
+  let msg = null;
+  if (a.length !== b.length) {
+    msg = "The agent saw " + a.length + " row(s); the governed data returns " + b.length + ".";
+  } else {
+    const i = a.findIndex((x, k) => x !== b[k]);
+    if (i >= 0) msg = "Same row count, but values differ (agent saw " + clip(a[i]) + "; data has " + clip(b[i]) + ").";
+  }
+  if (!msg) return [];
+  const blocked = ctx && ctx.blockedSoFar > 0;
+  return [finding("G5", blocked ? "info" : "flag", msg + (blocked
+    ? " Expected here: an earlier step was blocked, so the governed data diverged from the agent's run."
+    : " Nothing was blocked before this step, so the agent was looking at different data (a stale copy, an edited trace, or a fabricated result)."))];
+}
+
+const SESSION_COLUMNS = /^(exception_id|processing_id|mapping_id|run_id|seq|timestamp|approved_at|enqueued_at|prompted_by_processing_id)$/;
+
+/** Parse a SQL tool result: an array of row objects, { rows: [...] }, or { columns, rows: [[...]] }. */
+export function rowsFrom(text) {
+  let v;
+  try { v = JSON.parse(text); } catch { return null; }
+  if (Array.isArray(v) && v.every((r) => r && typeof r === "object" && !Array.isArray(r))) return v;
+  if (v && Array.isArray(v.rows)) {
+    if (v.rows.every((r) => r && typeof r === "object" && !Array.isArray(r))) return v.rows;
+    if (Array.isArray(v.columns) && v.rows.every(Array.isArray)) {
+      return v.rows.map((r) => Object.fromEntries(v.columns.map((c, i) => [c, r[i]])));
+    }
+  }
+  return null;
 }
 
 /**
@@ -216,6 +284,9 @@ export function humanConfirmation(history, terms) {
 function scopeMessage(op, rawTool) {
   const tool = String(rawTool || "").replace(/^mcp__.*__/, "");
   const t = tool.toLowerCase();
+  if (op === "loadExtract" || op === "loadFinanceExtract") {
+    return "Loading extracts is a reviewer step. Which data enters the governed layer, and when, is a human decision; the agent starts from what the reviewer loaded.";
+  }
   if (op === "deleteMapping") {
     return "Agents may not delete governed mappings. A mapping decides how every future record from that supplier is booked, so removing one is a reviewer's decision.";
   }

@@ -13,6 +13,11 @@
 //                                   { role, content } or the Claude Agent SDK /
 //                                   Claude Code shape { type, message: { role, content } }
 //
+// A trace may start with a `setup` list: what the reviewer did BEFORE the
+// agent session (loading extracts is a human step, not the agent's). Each
+// entry becomes a "setup" step that runs first, as the reviewer:
+//   "setup": [{ "action": "load_extract", "maison_id": "LV", "file": "lv_extract.csv" }]
+//
 // Each tool_use becomes an "action" step; the matching tool_result (by
 // tool_use_id) is attached to it as `traceResult`, so the player can show what
 // the agent saw originally next to what the replay produced.
@@ -26,6 +31,19 @@
 
 /** Mutating tools -> controller operation. Keys are normalized snake_case. */
 export const TOOL_ALIASES = Object.freeze({
+  query_sql: "querySql",
+  run_sql: "querySql",
+  sql_query: "querySql",
+  execute_sql: "querySql",
+  sql: "querySql",
+  query: "querySql",
+  run_query: "querySql",
+  execute_query: "querySql",
+  read_query: "querySql",
+  write_query: "querySql",
+  list_tables: "describeSchema",
+  describe_table: "describeSchema",
+  get_schema: "describeSchema",
   load_extract: "loadExtract",
   load_maison_extract: "loadExtract",
   ingest_extract: "loadExtract",
@@ -163,6 +181,7 @@ export function parseTrace(text) {
   let format = "";
   const warnings = [];
   const meta = { title: null, description: null, agent: null };
+  let setup = [];
 
   let whole;
   let wholeOk = false;
@@ -175,6 +194,7 @@ export function parseTrace(text) {
     messages = whole.messages.map(unwrapEvent).filter(Boolean);
     format = "messages-object";
     for (const k of Object.keys(meta)) if (typeof whole[k] === "string") meta[k] = whole[k];
+    if (Array.isArray(whole.setup)) setup = whole.setup;
   } else if (wholeOk && whole && typeof whole === "object") {
     const one = unwrapEvent(whole);
     if (!one) throw new Error("Unrecognized trace: expected a messages array, { messages: [...] }, or JSONL.");
@@ -202,6 +222,18 @@ export function parseTrace(text) {
 
   const steps = [];
   const byToolUseId = new Map();
+
+  for (const item of setup) {
+    if (!item || typeof item !== "object") continue;
+    const n = normalizeToolName(item.action || "load_extract");
+    const op = TOOL_ALIASES[n];
+    if (op !== "loadExtract" && op !== "loadFinanceExtract") {
+      warnings.push("Setup action \"" + item.action + "\" is not supported; only loading extracts is.");
+      continue;
+    }
+    const { action, actor, ...input } = item;
+    steps.push({ kind: "setup", op, tool: String(action || "load_extract"), toolUseId: null, input, actor: actor || "reviewer", traceResult: null, timestamp: null });
+  }
 
   for (const msg of messages) {
     const role = msg.role === "assistant" ? "agent" : "user";
@@ -245,6 +277,9 @@ export function parseTrace(text) {
   if (unsupported.length > 0) {
     const names = [...new Set(unsupported.map((s) => s.tool))].join(", ");
     warnings.push("Tool(s) with no app mapping will be shown but not executed: " + names + ".");
+  }
+  if (!steps.some((s) => s.kind === "setup") && steps.some((s) => s.op === "querySql")) {
+    warnings.push("The trace queries data but has no setup: nothing is loaded before the agent starts, so its queries will return no rows.");
   }
   if (!steps.some((s) => s.kind === "action" || s.kind === "observe")) {
     warnings.push("The trace has no tool calls this app can replay; only the narration will be shown.");

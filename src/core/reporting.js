@@ -99,7 +99,7 @@ function toReportRow(record, commonCurrency) {
 
 // Line spend in the common currency (EUR): the file Approved Spend EUR when
 // present, else qty * unit price * FX (FX defaults to 1).
-function spendInEur(record) {
+export function spendInEur(record) {
   const direct = Number(record.approvedSpendEur);
   if (Number.isFinite(direct) && direct > 0) return round2(direct);
   const qty = Number(record.quantity);

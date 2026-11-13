@@ -14,16 +14,22 @@
 // see what the data says?) and grounded claims (are its statements true?).
 // Executed actions are recorded under the agent's identity (attribution).
 //
+// Setup steps (the reviewer loading extracts before the session) run first,
+// as the reviewer, outside the agent policy. The agent then reads through
+// read-only SQL (deps.sql) and acts through governed tools.
+//
 // Identity: a trace was recorded in another session, so its ids (e.g.
-// exception "exc-run-12:0003") do not exist here. They are resolved by
-// (1) exact id, (2) run ids remapped from earlier load results, (3) the
-// record's invoiceRef / poRef, (4) a unique sequence suffix. Every remap is
-// reported on the step.
+// exception "exc-run-12:0003") may not exist here. They are resolved by
+// (1) exact id, (2) run ids remapped from setup/load results, (3) the
+// invoice the agent saw next to that id in an earlier SQL result, (4) the
+// record's invoiceRef / poRef in the call, (5) a unique sequence suffix.
+// Every remap is reported on the step.
 
 import { camelizeKeys } from "../../core/agentTrace.js";
 import { buildGroupReport } from "../../core/reporting.js";
 import { detectFinanceFormat } from "../../core/financeAdapter.js";
-import { checkAction, checkResult, checkClaims } from "../../core/agentPolicy.js";
+import { checkAction, checkScope, checkResult, checkSqlResult, checkClaims, rowsFrom } from "../../core/agentPolicy.js";
+import { checkReadOnly, routeForSql, describeSchema } from "../../core/sqlView.js";
 
 const MAISON_ALIASES = { LOUISVUITTON: "LV", LV: "LV", DIOR: "DIOR", CHRISTIANDIOR: "DIOR", FENDI: "FENDI" };
 const AUDITED_OPS = new Set(["approveMapping", "addMapping", "resolveException", "deleteMapping"]);
@@ -35,16 +41,17 @@ const AUDITED_OPS = new Set(["approveMapping", "addMapping", "resolveException",
  * @param {Function} deps.reset       async () => void; puts the app on clean seeded state
  * @param {Function} deps.getState    () => live controller state
  * @param {Function} deps.fetchText   async (path) => string; reads a CSV the trace refers to
+ * @param {Function} [deps.sql]       async (state, query) => { columns, rows, truncated }; runs agent SQL
  * @param {boolean}  [deps.enforce=true]  block policy violations (false = observe only)
  * @param {string}   [deps.actor="agent"] identity recorded in the Audit Trail
  */
-export function createReplayEngine({ steps, ops, reset, getState, fetchText, enforce = true, actor = "agent" }) {
+export function createReplayEngine({ steps, ops, reset, getState, fetchText, sql, enforce = true, actor = "agent" }) {
   let position = 0;
   let ctx = freshContext();
   const outcomes = new Array(steps.length).fill(null);
 
   function freshContext() {
-    return { runMap: new Map(), csvCache: new Map(), history: [], groundTexts: [], blockedSoFar: 0 };
+    return { runMap: new Map(), csvCache: new Map(), history: [], groundTexts: [], blockedSoFar: 0, idHints: new Map(), replayNumbers: new Set() };
   }
 
   function report() {
@@ -84,6 +91,12 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
       if (q.some((e) => e.id === mapped)) {
         return { id: mapped, note: "Trace id " + id + " → " + mapped + " (run " + m[1] + " replayed as " + ctx.runMap.get(m[1]) + ")." };
       }
+    }
+
+    const hint = ctx.idHints.get(id);
+    if (hint && hint.invoiceRef) {
+      const hit = q.find((e) => e.record && e.record.invoiceRef === hint.invoiceRef && (!hint.maison || e.maisonId === hint.maison));
+      if (hit) return { id: hit.id, note: id === hit.id ? null : "Trace id " + id + " → " + hit.id + " (the agent read it as " + hint.invoiceRef + ")." };
     }
 
     const maison = normalizeMaison(args.maisonId ?? args.maison);
@@ -136,6 +149,13 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
 
     if (step.kind === "narration") return plan;
 
+    if (step.kind === "setup") {
+      // The reviewer's own action: not an agent call, so no agent policy.
+      try { await planAction(plan, step.op, camelizeKeys(step.input)); }
+      catch (err) { plan.run = async () => ({ status: "error", message: err && err.message ? err.message : String(err) }); }
+      return plan;
+    }
+
     if (step.kind === "observe") {
       plan.beforeRoute = step.route;
       plan.run = async () => ({
@@ -152,7 +172,7 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
     const args = camelizeKeys(step.input);
 
     // G1 first: an out-of-scope call is never even resolved against the data.
-    const scope = checkAction({ op, tool: step.tool }, ctx.history).filter((f) => f.policy === "G1");
+    const scope = checkScope(op, step.tool);
     if (scope.length > 0 && (enforce || !op)) {
       // Without an app operation the call cannot run in either mode; in
       // Observe mode it is reported as "would block" rather than blocked.
@@ -207,6 +227,46 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
             afterRoute: added.length > 0 ? "#exceptions" : "#report",
             focusAfter: added.map((id) => ({ type: "exception", id })),
           };
+        };
+        return;
+      }
+
+      case "querySql": {
+        const query = String(args.query ?? args.sql ?? args.statement ?? args.q ?? "").trim();
+        if (!query) throw new Error("The SQL call has no query.");
+        plan.subject = { op, tool: plan.step.tool, sql: query };
+        plan.beforeRoute = routeForSql(query);
+        plan.run = async () => {
+          if (!checkReadOnly(query).ok) {
+            return { status: "skipped", message: "Not executed: SQL writes never reach the governed data. Under Enforce this is blocked.", afterRoute: plan.beforeRoute };
+          }
+          if (typeof sql !== "function") return { status: "error", message: "No SQL engine is available in this replay." };
+          let res;
+          try { res = await sql(getState(), query); }
+          catch (err) { return { status: "error", message: "SQL error: " + (err && err.message ? err.message : String(err)) }; }
+          for (const row of res.rows) for (const v of Object.values(row)) if (typeof v === "number") ctx.replayNumbers.add(Math.round(v * 100) / 100);
+          const focus = [];
+          for (const row of res.rows) {
+            if (row.exception_id) focus.push({ type: "exception", id: row.exception_id });
+            else if (row.mapping_id) focus.push({ type: "mapping", id: row.mapping_id });
+          }
+          return {
+            status: "ok",
+            message: "Query returned " + res.rows.length + " row(s)" + (res.truncated ? " (truncated)" : "") + ".",
+            result: res,
+            afterRoute: plan.beforeRoute,
+            focusAfter: focus,
+          };
+        };
+        return;
+      }
+
+      case "describeSchema": {
+        const table = args.tableName ?? args.table ?? null;
+        plan.subject = { op, tool: plan.step.tool };
+        plan.run = async () => {
+          const rows = describeSchema(table);
+          return { status: "ok", message: "Schema" + (table ? " of " + table : "") + ": " + rows.length + " row(s).", result: { columns: Object.keys(rows[0] || {}), rows } };
         };
         return;
       }
@@ -329,12 +389,10 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
     if (typeof inline === "string" && inline.trim() !== "") return inline;
     let path = args.file ?? args.path ?? args.filename ?? args.filePath;
     if (path) {
+      // Extracts are served from seed/. A path from the recording machine
+      // (absolute, a URL, or a bare file name) resolves to its file name there.
       path = String(path);
-      if (/^[a-z]+:\/\//i.test(path) || path.startsWith("/") || path.includes("..")) {
-        // Only same-site relative paths; map an absolute path to its file name
-        // under seed/ (the agent's machine paths do not exist here).
-        path = "seed/" + path.split(/[\\/]/).pop();
-      }
+      if (!/^seed\/[^/]+$/.test(path)) path = "seed/" + path.split(/[\\/]/).pop();
     } else {
       const seeded = getState().seedExtracts || {};
       if (maison && typeof seeded[maison] === "string" && seeded[maison] !== "") return seeded[maison];
@@ -369,6 +427,9 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
     }
     const maisonsBySupplier = {};
     for (const [k, v] of Object.entries(maisons)) maisonsBySupplier[k] = v.size;
+    // Figures the agent could legitimately cite: report totals plus any number
+    // the governed data returned to its SQL in this replay.
+    for (const n of ctx.replayNumbers) figures.push(n);
     return { consolidated: (s.consolidated || []).length, exceptions: (s.exceptionQueue || []).length, figures, maisonsBySupplier };
   }
 
@@ -392,8 +453,8 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
       catch (err) { out = { status: "error", message: err && err.message ? err.message : String(err) }; }
     }
 
-    if (out.status === "ok") {
-      findings.push(...checkResult(step, out.result, ctx));
+    if (out.status === "ok" && step.kind !== "setup") {
+      findings.push(...(step.op === "querySql" ? checkSqlResult(step, out.result, ctx) : checkResult(step, out.result, ctx)));
       if (step.kind === "action" && AUDITED_OPS.has(step.op)) {
         findings.push({ policy: "G7", severity: "pass", message: "Recorded in the Audit Trail as \"" + actor + "\"." });
       }
@@ -403,7 +464,18 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, enf
       if (step.role === "agent") findings.push(...checkClaims(step.text, facts(), ctx.groundTexts));
       if (step.role === "user" || step.role === "agent") ctx.history.push({ role: step.role, text: step.text });
     }
-    if (step.traceResult && step.traceResult.text) ctx.groundTexts.push(step.traceResult.text);
+    if (step.traceResult && step.traceResult.text) {
+      ctx.groundTexts.push(step.traceResult.text);
+      // Remember which invoice each exception id stood for in what the agent
+      // read, so later calls naming that id resolve to the same record.
+      const seen = step.op === "querySql" ? rowsFrom(step.traceResult.text) : null;
+      for (const row of seen || []) {
+        if (row && row.exception_id && row.invoice_ref) ctx.idHints.set(row.exception_id, { invoiceRef: row.invoice_ref, maison: row.maison || null });
+      }
+    }
+    if (step.kind === "setup" && step.input && step.input.run_id && out.result && out.result.runId) {
+      ctx.runMap.set(String(step.input.run_id), out.result.runId);
+    }
 
     const after = summarize();
     const outcome = {

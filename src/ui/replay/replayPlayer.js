@@ -26,6 +26,14 @@ import { snapshotAll, restoreAll } from "../../store/browserStore.js";
 import { parseTrace } from "../../core/agentTrace.js";
 import { POLICIES } from "../../core/agentPolicy.js";
 import { createReplayEngine } from "./replayEngine.js";
+import { createSqlRunner, loadSqlJsFromCdn } from "./sqlRunner.js";
+
+let sqlRunnerPromise = null;
+/** The agent's SQL runs in SQLite, loaded from the CDN on first use. */
+async function runSql(state, query) {
+  if (!sqlRunnerPromise) sqlRunnerPromise = loadSqlJsFromCdn().then(createSqlRunner).catch((err) => { sqlRunnerPromise = null; throw err; });
+  return (await sqlRunnerPromise).run(state, query);
+}
 
 const LIBRARY = [
   "seed/traces/01_governed_agent.json",
@@ -133,7 +141,7 @@ export function openTraceDialog() {
     try {
       const { format, steps, warnings } = parseTrace(text);
       const n = (k) => steps.filter((s) => s.kind === k).length;
-      preview.textContent = name + ": " + steps.length + " steps (" + n("action") + " data actions, " + n("observe") + " reads, "
+      preview.textContent = name + ": " + steps.length + " steps (" + (n("setup") ? n("setup") + " reviewer loads, " : "") + n("action") + " agent tool calls, " + n("observe") + " reads, "
         + n("narration") + " messages" + (n("unsupported") ? ", " + n("unsupported") + " calls to tools outside the app" : "") + "), " + format + ".";
       const extra = warnings.filter((w) => !/no app mapping/.test(w));
       if (extra.length) { preview.textContent += " " + extra.join(" "); preview.className = "replay-dialog__preview is-warning"; }
@@ -210,6 +218,7 @@ function makeEngine(enforce) {
     getState: controller.getState,
     enforce,
     actor: session.parsed.meta.agent || "agent",
+    sql: runSql,
     fetchText: async (path) => {
       const resp = await fetch(path, { cache: "no-cache" });
       if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
@@ -537,10 +546,13 @@ function renderIntro() {
   const meta = session.parsed.meta;
   if (meta.description) card.appendChild(el("p", { class: "replay-step__text", text: meta.description }));
   card.appendChild(el("p", { class: "replay-step__text muted", text:
-    steps.length + " steps (" + n("action") + " data actions, " + n("observe") + " reads, " + n("narration") + " messages"
+    steps.length + " steps (" + (n("setup") ? n("setup") + " reviewer loads, " : "") + n("action") + " agent tool calls, " + n("observe") + " reads, " + n("narration") + " messages"
     + (n("unsupported") ? ", " + n("unsupported") + " calls to tools outside the app" : "") + "). "
     + (session.enforce ? "Mode: Enforce. Policy violations are blocked." : "Mode: Observe. Everything runs; violations are only marked.")
     + " Press Play, or step through with ▶|." }));
+  if (!steps.some((x) => x.kind === "setup")) {
+    card.appendChild(el("p", { class: "replay-step__note", text: "This trace has no setup, so nothing is loaded before the agent starts. Add a \"setup\" list (the extracts the reviewer loaded) for its queries to return data." }));
+  }
 }
 
 const ROLE_LABEL = { user: "User", agent: "Agent", thinking: "Agent thinking" };
@@ -559,6 +571,8 @@ function renderStep(plan, outcome) {
 
   const head = el("div", { class: "replay-step__head" });
   const label = step.kind === "narration" ? ROLE_LABEL[step.role] || "Message"
+    : step.kind === "setup" ? "Reviewer · before the agent session"
+    : step.op === "querySql" ? "Agent queries data (SQL)"
     : step.kind === "action" ? "Tool call"
     : step.kind === "observe" ? "Agent reads data"
     : "Tool call (outside the app)";
@@ -573,12 +587,23 @@ function renderStep(plan, outcome) {
     return;
   }
 
+  if (step.kind === "setup") {
+    card.appendChild(el("p", { class: "replay-step__text", text: (step.actor || "The reviewer") + " loads the " + (step.input.maison_id || "") + " extract" + (step.input.file ? " (" + step.input.file + ")" : "") + ". Loading data is a human step; the agent starts from what was loaded." }));
+    if (outcome) card.appendChild(el("p", { class: "replay-step__status is-" + outcome.status, text: (outcome.status === "ok" ? "✓ " : "✗ ") + outcome.message }));
+    const chips = outcome && deltaChips(outcome.delta);
+    if (chips) card.appendChild(chips);
+    return;
+  }
+
+  const isSql = step.op === "querySql";
   const call = el("p", { class: "replay-step__call" });
   call.appendChild(el("code", { text: step.tool.replace(/^mcp__.*__/, "") }));
-  if (step.op) call.appendChild(el("span", { class: "muted", text: "  →  " + step.op + "()" }));
+  if (step.op && !isSql) call.appendChild(el("span", { class: "muted", text: "  →  " + step.op + "()" }));
   card.appendChild(call);
+  const query = isSql ? String(step.input.query ?? step.input.sql ?? step.input.statement ?? "") : "";
+  if (isSql) card.appendChild(el("pre", { class: "replay-sql", text: query }));
   const argsText = pretty(step.input);
-  const args = argsText !== "{}" ? collapsible("Arguments", argsText, !outcome) : null;
+  const args = !isSql && argsText !== "{}" ? collapsible("Arguments", argsText, !outcome) : null;
 
   if (!outcome) {
     card.appendChild(el("p", { class: "replay-step__status is-pending", text: "Checking policy…" }));
@@ -598,6 +623,7 @@ function renderStep(plan, outcome) {
 
   const chips = deltaChips(outcome.delta);
   if (chips) card.appendChild(chips);
+  if (isSql && outcome.result && outcome.result.rows) card.appendChild(resultTable(outcome.result));
   if (args) card.appendChild(args);
   if (step.traceResult) {
     card.appendChild(collapsible("What the agent saw in its original run" + (step.traceResult.isError ? " (error)" : ""), prettyText(step.traceResult.text), false));
@@ -650,7 +676,7 @@ function renderReport(atEnd) {
     t.appendChild(el("span", { class: "replay-tile__label", text: label }));
     tiles.appendChild(t);
   };
-  tile(g.executed + " / " + g.actions, "agent actions executed");
+  tile(g.executed + " / " + g.actions, "agent tool calls executed");
   if (g.enforce) tile(g.blocked, "blocked by policy", g.blocked ? "is-blocked" : "");
   else tile(g.wouldBlock, "would be blocked", g.wouldBlock ? "is-would" : "");
   tile(g.rejectedByApp, "refused by the app", g.rejectedByApp ? "is-rejected" : "");
@@ -741,6 +767,8 @@ function stepIcon(step, o) {
   if (o && o.governance && VERDICT[o.governance]) return VERDICT[o.governance].icon;
   if (o && o.status === "error") return "✗";
   if (step.kind === "narration") return step.role === "user" ? "👤" : step.role === "thinking" ? "💭" : "🤖";
+  if (step.kind === "setup") return "📥";
+  if (step.op === "querySql") return "🔎";
   if (step.kind === "observe") return "👁";
   if (step.kind === "unsupported") return "⤼";
   return "⚙";
@@ -752,6 +780,11 @@ function stepLabel(step) {
     return (ROLE_LABEL[step.role] || "") + ": " + (t.length > 80 ? t.slice(0, 77) + "…" : t);
   }
   const args = step.input || {};
+  if (step.kind === "setup") return "Reviewer loads " + (args.maison_id || "extract");
+  if (step.op === "querySql") {
+    const q = String(args.query ?? args.sql ?? "").replace(/\s+/g, " ");
+    return "SQL: " + (q.length > 70 ? q.slice(0, 67) + "…" : q);
+  }
   const hint = args.maison_id || args.maisonId || args.exception_id || args.exceptionId || args.mapping_id || "";
   return step.tool.replace(/^mcp__.*__/, "") + (hint ? " (" + hint + ")" : "");
 }
@@ -759,6 +792,30 @@ function stepLabel(step) {
 // ---------------------------------------------------------------------------
 // Small DOM helpers.
 // ---------------------------------------------------------------------------
+
+/** Rows the governed data returned to the agent's query. */
+function resultTable({ columns, rows, truncated }) {
+  const wrap = el("div", { class: "replay-sqlresult" });
+  wrap.appendChild(el("p", { class: "replay-sqlresult__cap muted", text: "Governed data returned " + rows.length + " row(s)" + (truncated ? " (truncated)" : "") + ":" }));
+  if (rows.length === 0) return wrap;
+  const cols = columns && columns.length ? columns : Object.keys(rows[0]);
+  const t = el("table", { class: "replay-sqlresult__table" });
+  const hr = el("tr");
+  for (const c of cols) hr.appendChild(el("th", { text: c }));
+  const thead = el("thead"); thead.appendChild(hr); t.appendChild(thead);
+  const tb = el("tbody");
+  for (const row of rows.slice(0, 12)) {
+    const tr = el("tr");
+    for (const c of cols) tr.appendChild(el("td", { text: row[c] == null ? "NULL" : String(row[c]) }));
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+  const scroller = el("div", { class: "replay-sqlresult__scroll" });
+  scroller.appendChild(t);
+  wrap.appendChild(scroller);
+  if (rows.length > 12) wrap.appendChild(el("p", { class: "muted replay-sqlresult__cap", text: "+" + (rows.length - 12) + " more" }));
+  return wrap;
+}
 
 function collapsible(summary, text, open) {
   const d = el("details", { class: "replay-step__details" });

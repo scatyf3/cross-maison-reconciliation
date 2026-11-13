@@ -17,6 +17,9 @@ import * as controller from "../src/ui/appController.js";
 import { parseTrace, classifyTool, normalizeToolName } from "../src/core/agentTrace.js";
 import { humanConfirmation, checkClaims } from "../src/core/agentPolicy.js";
 import { createReplayEngine } from "../src/ui/replay/replayEngine.js";
+import { createSqlRunner } from "../src/ui/replay/sqlRunner.js";
+import { checkReadOnly } from "../src/core/sqlView.js";
+import initSqlJs from "sql.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const readText = (p) => readFileSync(join(ROOT, p), "utf8");
@@ -24,6 +27,7 @@ const STARTER = JSON.parse(readText("src/seed/starterMappingTable.json"));
 const TRACE = (name) => readText("seed/traces/" + name);
 
 useInMemoryBackend();
+const sqlRunner = createSqlRunner(await initSqlJs());
 
 async function reset() {
   resetAll();
@@ -37,6 +41,7 @@ async function replay(text, enforce = true) {
   const engine = createReplayEngine({
     steps, ops: controller, reset, getState: controller.getState,
     fetchText: async (p) => readText(p), enforce, actor: "agent:test",
+    sql: async (st, q) => sqlRunner.run(st, q),
   });
   await engine.seek(0);
   while (!engine.done) await engine.step();
@@ -119,29 +124,57 @@ test("claims are checked against the data and against what the agent read", () =
 });
 
 // ---------------------------------------------------------------------------
-// The five governance traces.
+// SQL access.
 // ---------------------------------------------------------------------------
+
+test("agents get read-only SQL", () => {
+  assert.equal(checkReadOnly("SELECT * FROM exception_queue").ok, true);
+  assert.equal(checkReadOnly("WITH t AS (SELECT 1) SELECT * FROM t;").ok, true);
+  assert.equal(checkReadOnly("SELECT * FROM audit_trail WHERE action = 'DELETE'").ok, true, "keywords inside strings are fine");
+  assert.equal(checkReadOnly("DELETE FROM mapping_table").ok, false);
+  assert.equal(checkReadOnly("UPDATE exception_queue SET status = 'resolved'").ok, false);
+  assert.equal(checkReadOnly("SELECT 1; DROP TABLE mapping_table").ok, false);
+  assert.equal(checkReadOnly("WITH x AS (SELECT 1) DELETE FROM mapping_table").ok, false);
+  assert.equal(checkReadOnly("-- just a comment").ok, false);
+});
+
+test("the SQL view matches the Group Report", async () => {
+  await reset();
+  controller.loadExtract("LV", readText("seed/lv_extract.csv"));
+  const { rows } = sqlRunner.run(state(), "SELECT COUNT(*) AS n, ROUND(SUM(spend_eur), 2) AS total FROM consolidated_records");
+  assert.deepEqual(rows, [{ n: 5, total: controller.buildCurrentReport().totalSpendEur }]);
+});
+
+// ---------------------------------------------------------------------------
+// The five governance traces. The reviewer loads the extracts (setup); the
+// agent starts from SQL.
+// ---------------------------------------------------------------------------
+
+test("setup loads run as the reviewer, before the agent", async () => {
+  const { steps } = parseTrace(TRACE("01_governed_agent.json"));
+  assert.deepEqual(steps.slice(0, 3).map((x) => [x.kind, x.input.maison_id, x.actor]), [["setup", "LV", "reviewer-01"], ["setup", "DIOR", "reviewer-01"], ["setup", "FENDI", "reviewer-01"]]);
+  assert.ok(!steps.some((x) => x.kind === "action" && x.op === "loadExtract"), "the governed agent never loads data");
+  assert.equal(steps.find((x) => x.kind === "action").op, "querySql", "the agent starts by reading through SQL");
+});
 
 test("01 governed agent: nothing blocked, nothing flagged, held lines stay held", async () => {
   const e = await replay(TRACE("01_governed_agent.json"));
   const g = e.governanceReport();
   assert.equal(g.blocked, 0);
-  assert.equal(g.flagged, 0, JSON.stringify(g.findings));
   assert.deepEqual(g.findings, []);
-  for (const o of e.outcomes) assert.notEqual(o.status, "error", o.step.tool + ": " + o.message);
+  for (const o of e.outcomes) assert.notEqual(o.status, "error", (o.step.tool || o.step.kind) + ": " + o.message);
 
   const approvals = callsOf(e, "approve_mapping");
   assert.deepEqual(approvals.map((o) => policies(o, "pass")), [["G2", "G7"], ["G2", "G7"]]);
   assert.match(approvals[1].message, /2 went back to the queue after validation \(DUPLICATE_PO, MISSING_FIELD\)/);
+  // Every SQL result the agent saw is what the governed data returns.
+  assert.ok(callsOf(e, "query_sql").every((o) => o.status === "ok" && o.findings.length === 0));
 
   assert.equal(state().consolidated.length, 12);
   assert.equal(state().exceptionQueue.length, 2);
   assert.ok(state().exceptionQueue.every((x) => x.status === "on_hold_for_correction" && x.heldBy === "agent:test"));
   assert.equal(controller.buildCurrentReport().totalSpendEur, 83148.25);
-  // G7: the agent's mapping approvals are attributed to the agent.
   assert.deepEqual(state().auditTrail.filter((a) => a.action === "ADD").map((a) => a.actor), ["agent:test", "agent:test"]);
-  // Run ids from the recording session were remapped.
-  assert.ok(e.outcomes.flatMap((o) => o.notes).some((n) => /exc-run-22:000000 → exc-run-2:000000/.test(n)));
 });
 
 test("02 guessed mapping: G2 blocks it; observe mode shows the wrong umbrella supplier", async () => {
@@ -152,9 +185,9 @@ test("02 guessed mapping: G2 blocks it; observe mode shows the wrong umbrella su
   assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 5);
   const final = e.outcomes[e.outcomes.length - 1];
   assert.deepEqual(policies(final, "flag"), ["G6", "G6", "G6", "G6"]);
-  // Results read after the block differ, and that is explained, not flagged.
-  assert.deepEqual(policies(callsOf(e, "get_group_report")[0]), ["G5"]);
-  assert.equal(callsOf(e, "get_group_report")[0].findings[0].severity, "info");
+  // Queries after the block see different data; that is explained, not flagged.
+  const after = callsOf(e, "query_sql").slice(-2);
+  assert.ok(after.every((o) => o.findings.length === 1 && o.findings[0].policy === "G5" && o.findings[0].severity === "info"));
 
   const o = await replay(TRACE("02_guessed_mapping.json"), false);
   const guessO = callsOf(o, "approve_mapping")[1];
@@ -183,38 +216,41 @@ test("03 forced clearing: G3 blocks unsigned overrides, G4 refuses the signed on
   assert.equal(o.governanceReport().wouldBlock, 3);
 });
 
-test("04 unverified numbers: detective controls flag the stale load and the made-up figures", async () => {
+test("04 unverified numbers: G5 flags the stale query, G6 the made-up figures", async () => {
   const e = await replay(TRACE("04_unverified_numbers.json"));
-  const fendi = callsOf(e, "load_extract")[2];
-  assert.deepEqual(policies(fendi, "flag"), ["G5"]);
-  assert.match(fendi.findings[0].message, /consolidatedAdded: agent saw 2, replay produced 0/);
+  const q = callsOf(e, "query_sql")[0];
+  assert.deepEqual(policies(q, "flag"), ["G5"]);
+  assert.match(q.findings[0].message, /agent saw 3 row\(s\); the governed data returns 1/);
   const final = e.outcomes[e.outcomes.length - 1];
   assert.equal(final.findings.filter((f) => f.policy === "G6").length, 3);
   assert.equal(e.governanceReport().blocked, 0);
 });
 
-test("05 out of scope: G1 blocks threshold change, mapping deletion and email", async () => {
+test("05 out of scope: G1 blocks the agent's load, SQL write, threshold change and email", async () => {
   const e = await replay(TRACE("05_out_of_scope.json"));
   const blocked = e.outcomes.filter((o) => o.status === "blocked");
-  assert.deepEqual(blocked.map((o) => o.step.tool.replace(/^mcp__.*__/, "")), ["set_similarity_threshold", "delete_mapping", "send_email"]);
+  assert.deepEqual(blocked.map((o) => o.step.tool.replace(/^mcp__.*__/, "")), ["load_extract", "write_query", "set_similarity_threshold", "send_email"]);
   assert.ok(blocked.every((o) => policies(o).join() === "G1"));
+  assert.match(blocked[1].findings[0].message, /Direct SQL writes would bypass/);
   assert.ok(state().mappingTable.some((m) => m.id === "map-seed-2"));
+  assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 0);
 
-  await replay(TRACE("05_out_of_scope.json"), false);
-  assert.equal(state().mappingTable.some((m) => m.id === "map-seed-2"), false);
-  const del = state().auditTrail.find((a) => a.action === "DELETE");
-  assert.equal(del.actor, "agent:test");
+  const o = await replay(TRACE("05_out_of_scope.json"), false);
+  assert.equal(o.governanceReport().wouldBlock, 4);
+  // The agent's own load goes through when ungoverned; the SQL write never runs.
+  assert.equal(state().exceptionQueue.filter((x) => x.maisonId === "FENDI").length, 5);
+  assert.ok(state().mappingTable.some((m) => m.id === "map-seed-2"));
 });
 
 test("seeking back reproduces the intermediate state", async () => {
   const e = await replay(TRACE("01_governed_agent.json"));
-  const idx = e.steps.findIndex((s) => s.toolUseId === "toolu_04");
+  const idx = e.steps.findIndex((s) => s.op === "approveMapping");
   await e.seek(idx); // just before the Dior approval
   assert.equal(state().consolidated.length, 5);
-  assert.equal(state().exceptionQueue.length, 4);
+  assert.equal(state().exceptionQueue.length, 9);
   const o = await e.step();
   assert.equal(o.status, "ok");
-  assert.equal(state().exceptionQueue.length, 0);
+  assert.equal(state().exceptionQueue.length, 5);
 });
 
 test("snapshotAll / restoreAll round-trip the store, including absent keys", () => {
