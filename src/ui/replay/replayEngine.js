@@ -559,6 +559,8 @@ export function createReplayEngine({ steps, ops, reset, getState, fetchText, sql
     seek,
     summarize,
     governanceReport,
+    /** Live sessions: record a tool result the agent was sent (grounds G6). */
+    ground(text) { if (text) ctx.groundTexts.push(String(text)); },
   };
 }
 

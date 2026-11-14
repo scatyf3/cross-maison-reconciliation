@@ -55,11 +55,14 @@ export const STARTER_MAPPING_TABLE_PATH = "src/seed/starterMappingTable.json";
  * descriptive error on a non-OK response so the caller can surface which seed
  * asset failed rather than silently seeding partial data.
  *
- * @param {string} path  path relative to index.html (e.g. "seed/lv_extract.csv")
+ * @param {string} path  path relative to the repo root (e.g. "seed/lv_extract.csv")
  * @returns {Promise<string>}  the response body as text
  */
 async function fetchText(path) {
-  const response = await fetch(path, { cache: "no-cache" });
+  // Resolve against the repo root (this module lives in src/seed/), not the
+  // page, so shells in subfolders (v2/) find the same seed files.
+  const url = new URL("../../" + path, import.meta.url);
+  const response = await fetch(url, { cache: "no-cache" });
   if (!response.ok) {
     throw new Error(
       `Failed to load seed asset "${path}": ${response.status} ${response.statusText}`,

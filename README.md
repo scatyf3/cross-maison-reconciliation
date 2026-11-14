@@ -44,6 +44,14 @@ On the very first load (when the browser store is empty) the app seeds the start
 
 Your mapping decisions, exceptions, consolidated data, and audit trail persist in the browser across reloads. **Reset** (top right) starts over from the seeded, preloaded state.
 
+## v2: data and agent workspace (`/v2`)
+
+A second UI at [`v2/`](v2/) (open `http://localhost:8000/v2/`, or `https://<user>.github.io/<repo>/v2/`) that puts the governed data and the agent working on it side by side. It runs on the same controller, store, pipeline, policy and replay engine as v1, and shares its data. Only the UI is new.
+
+- **Data workspace** (centre): the four governed tables plus saved queries in the rail, a read-only SQL console (SQLite via sql.js, the same view agents get), a sortable/filterable grid, and an inspector for the selected row. From the inspector a reviewer approves mappings (with the recommender's evidence and confidence against the threshold), overrides or holds exceptions, or deletes mappings, all audited exactly as in v1. The KPI strip shows Group spend, consolidated lines, open exceptions, mappings and audit entries, with deltas when they change.
+- **Replay trace** (right): the bundled governance traces (or your own), with Enforce / Observe, play, step and scrub. Each tool call is a card with its policy verdict, findings and data deltas. The grid follows along: the agent's SQL results appear in it, and the rows a call targets are highlighted (red when blocked).
+- **Live agent** (right): chat with Claude using your own Anthropic API key (Claude Opus 5.5 by default; Sonnet 5.5 and Haiku 5.5 selectable). It gets `query_sql`, `approve_mapping`, `hold_exception` and `resolve_exception`, and every call goes through the same G1–G7 gateway as a replay, always enforced. A blocked call goes back to the agent as an error so it can ask you. The card also offers a one-click "approve as reviewer". Actions are audited as `agent:claude`. The key is sent from the browser straight to api.anthropic.com and stays only in this tab (sessionStorage, opt-in); a production deployment would proxy it. The SDK (`@anthropic-ai/sdk`, from jsDelivr) is loaded only when you start a live session. Opus and Sonnet requests opt into server-side refusal fallback (`fallbacks: "default"`).
+
 ## Agent governance: replaying an agent's trace
 
 **Replay trace** (top right) shows how this system governs an AI agent that works on the reconciliation through tool calls. The division of work:

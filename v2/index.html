@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cross-Maison Workspace</title>
+  <meta name="description" content="Cross-Maison P2P reconciliation, v2: the governed data and the agent working on it, side by side." />
+  <script>
+    // Relative module and asset paths need the trailing slash (/v2 -> /v2/).
+    if (!/\/$|\.html$/.test(location.pathname)) location.replace(location.pathname + "/" + location.search + location.hash);
+  </script>
+  <link rel="icon" type="image/webp" href="../Icon.webp" />
+  <link rel="stylesheet" href="v2.css" />
+</head>
+<body>
+  <div class="app" id="v2">
+    <header class="top">
+      <div class="brand">
+        <img class="brand__mark" src="../Icon.webp" alt="" />
+        <div class="brand__text">
+          <span class="brand__name">Cross-Maison</span>
+          <span class="brand__sub">Governed P2P layer · LV · Dior · Fendi</span>
+        </div>
+      </div>
+      <div class="kpis" id="kpis" aria-label="Key figures"></div>
+      <div class="top__actions">
+        <button type="button" class="btn btn--small" id="export-btn" title="Download the Group report as CSV">Export</button>
+        <button type="button" class="btn btn--small" id="reset-btn" title="Start over from the seeded sample data">Reset</button>
+        <a class="linkbtn" href="../" title="The original five-view UI">v1</a>
+      </div>
+    </header>
+
+    <nav class="mobile-tabs" aria-label="Panels">
+      <button type="button" data-panel="rail">Data</button>
+      <button type="button" data-panel="work" aria-current="true">Grid</button>
+      <button type="button" data-panel="agent">Agent</button>
+    </nav>
+
+    <div class="body">
+      <aside class="rail" id="rail" data-panel="rail" aria-label="Tables and queries"></aside>
+
+      <main class="work" data-panel="work">
+        <div class="console">
+          <div class="console__head">
+            <div class="source" id="source-label"></div>
+            <span class="console__hint">Read-only SQL · ⌘/Ctrl+Enter</span>
+          </div>
+          <div class="console__row">
+            <textarea id="sql-editor" class="console__editor" rows="3" spellcheck="false" aria-label="SQL query"></textarea>
+            <button type="button" id="sql-run" class="btn btn--primary">Run</button>
+          </div>
+        </div>
+        <div class="gridbar">
+          <input type="search" id="grid-filter" class="input input--search" placeholder="Filter rows" aria-label="Filter rows" />
+          <button type="button" id="grid-cols" class="linkbtn">All columns</button>
+          <span class="gridbar__status" id="grid-status"></span>
+        </div>
+        <div class="split">
+          <div class="grid-wrap" id="grid"></div>
+          <section class="inspector" id="inspector" hidden aria-label="Selected record"></section>
+        </div>
+      </main>
+
+      <aside class="agent" data-panel="agent" aria-label="Agent">
+        <div class="agent__tabs" role="tablist">
+          <button type="button" role="tab" id="tab-live" aria-controls="agent-live" aria-selected="true">Live agent</button>
+          <button type="button" role="tab" id="tab-replay" aria-controls="agent-replay" aria-selected="false">Replay trace</button>
+        </div>
+        <div class="agent__pane" id="agent-live" role="tabpanel" aria-labelledby="tab-live"></div>
+        <div class="agent__pane" id="agent-replay" role="tabpanel" aria-labelledby="tab-replay" hidden></div>
+      </aside>
+    </div>
+  </div>
+
+  <noscript><p style="padding:16px">This app needs JavaScript and a local web server (see README).</p></noscript>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

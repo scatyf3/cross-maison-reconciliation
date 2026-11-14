@@ -252,7 +252,9 @@ function currentHash() {
  */
 function appRoot() {
   if (typeof document === "undefined") return null;
-  return document.getElementById("app") || document.body || null;
+  // Only the v1 shell has #app. Other shells (v2/) import the controller for
+  // its operations and render their own UI, so never fall back to <body>.
+  return document.getElementById("app");
 }
 
 /**
@@ -1045,12 +1047,24 @@ function logWarning(message, err) {
 // Browser auto-boot: start the app when loaded as a module in the browser.
 // ---------------------------------------------------------------------------
 
+let bootPromise = null;
+
+/**
+ * Initialize once and return the shared promise. The v1 shell boots on load;
+ * other shells (v2/) await this before reading state.
+ * @returns {Promise<void>}
+ */
+export function boot() {
+  if (!bootPromise) bootPromise = init();
+  return bootPromise;
+}
+
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
-      init();
+      boot();
     });
   } else {
-    init();
+    boot();
   }
 }
